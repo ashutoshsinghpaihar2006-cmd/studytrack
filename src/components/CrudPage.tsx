@@ -48,6 +48,8 @@ export function CrudPage({
   defaults,
   transformValues,
   hideHeader,
+  readOnly,
+  extraAction,
 }: {
   title: string;
   eyebrow?: string;
@@ -64,8 +66,10 @@ export function CrudPage({
   defaults?: FormValues;
   transformValues?: (values: FormValues) => FormValues;
   hideHeader?: boolean;
+  readOnly?: boolean;
+  extraAction?: React.ReactNode;
 }) {
-  const { client, user } = useAuth();
+  const { client, user, logActivity } = useAuth();
   const queryClient = useQueryClient();
   const { data: rows = [], isLoading, isError, error, refetch } = useTableRows(table);
   const [search, setSearch] = useState("");
@@ -86,9 +90,11 @@ export function CrudPage({
       if (id) {
         const { error: updateError } = await client.from(table).update(writable).eq("id", id);
         if (updateError) throw updateError;
+        await logActivity(`Updated ${table} record`, table, id);
       } else {
-        const { error: insertError } = await client.from(table).insert({ ...writable, owner_id: user.id });
+        const { data: inserted, error: insertError } = await client.from(table).insert({ ...writable, owner_id: user.id }).select().single();
         if (insertError) throw insertError;
+        await logActivity(`Created ${table} record`, table, inserted?.id);
       }
     },
     onSuccess: async (_data, variables) => {
@@ -127,6 +133,7 @@ export function CrudPage({
     const { error: deleteError } = await client.from(table).delete().eq("id", row.id);
     if (deleteError) setOperationError(deleteError.message);
     else {
+      await logActivity(`Deleted ${table} record`, table, row.id);
       await queryClient.invalidateQueries();
       setNotice("Record deleted.");
       window.setTimeout(() => setNotice(""), 3500);
@@ -154,14 +161,19 @@ export function CrudPage({
           title={title}
           description={description}
           action={
-            <AddButton
-              label={addLabel ?? `Add ${title.toLowerCase().replace(/s$/, "")}`}
-              onClick={() => {
-                setEditing(null);
-                setDialogOpen(true);
-                setOperationError("");
-              }}
-            />
+            <div className="flex items-center gap-2">
+              {extraAction}
+              {!readOnly && (
+                <AddButton
+                  label={addLabel ?? `Add ${title.toLowerCase().replace(/s$/, "")}`}
+                  onClick={() => {
+                    setEditing(null);
+                    setDialogOpen(true);
+                    setOperationError("");
+                  }}
+                />
+              )}
+            </div>
           }
         />
       )}
@@ -192,7 +204,7 @@ export function CrudPage({
           <SearchBox
             value={search}
             onChange={setSearch}
-            placeholder={searchPlaceholder ?? `Filter ${title.toLowerCase()}…`}
+            placeholder={searchPlaceholder ?? `Filter ${title.toLowerCase()}...`}
           />
           <span className="font-mono text-xs text-slate-400 tabular-nums">
             {rows.length} total in database
@@ -204,46 +216,51 @@ export function CrudPage({
           <DataTable
             columns={allColumns}
             rows={filtered}
-            actions={(row) => (
-              <div className="flex items-center justify-end gap-1">
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  aria-label="Edit record"
-                  title="Edit"
-                  className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
-                  onClick={() => {
-                    setEditing(row);
-                    setDialogOpen(true);
-                    setOperationError("");
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="quiet"
-                  aria-label="Delete record"
-                  title="Delete"
-                  className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50"
-                  onClick={() => void remove(row)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
+            actions={
+              readOnly
+                ? undefined
+                : (row) => (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        size="sm"
+                        variant="quiet"
+                        aria-label="Edit record"
+                        title="Edit"
+                        className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-indigo-50"
+                        onClick={() => {
+                          setEditing(row);
+                          setDialogOpen(true);
+                          setOperationError("");
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="quiet"
+                        aria-label="Delete record"
+                        title="Delete"
+                        className="h-8 w-8 p-0 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                        onClick={() => void remove(row)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )
+            }
           />
         ) : (
           <EmptyState
             title={search ? "No matches found" : emptyTitle}
             message={search ? "Try searching with a different term." : emptyMessage}
             action={
-              !search ? (
+              !search && !readOnly ? (
                 <AddButton
                   label={addLabel ?? "Add first record"}
                   onClick={() => {
                     setEditing(null);
                     setDialogOpen(true);
+                    setOperationError("");
                   }}
                 />
               ) : undefined
@@ -251,28 +268,30 @@ export function CrudPage({
           />
         )}
       </Panel>
-      <RecordDialog
-        open={dialogOpen}
-        title={editing ? `Edit ${title.replace(/s$/, "")}` : `Add ${title.replace(/s$/, "")}`}
-        description="Records are saved directly to your PostgreSQL workspace."
-        fields={fields}
-        initialValues={
-          editing
-            ? Object.fromEntries(
-                fields.map((field) => [
-                  field.name,
-                  (editing[field.name] as string | number | null) ?? "",
-                ])
-              )
-            : defaults
-        }
-        busy={mutation.isPending}
-        onClose={() => {
-          setDialogOpen(false);
-          setEditing(null);
-        }}
-        onSave={(values) => mutation.mutateAsync({ values, id: editing?.id })}
-      />
+      {!readOnly && (
+        <RecordDialog
+          open={dialogOpen}
+          title={editing ? `Edit ${title.replace(/s$/, "")}` : `Add ${title.replace(/s$/, "")}`}
+          description="Records are saved directly to your PostgreSQL workspace."
+          fields={fields}
+          initialValues={
+            editing
+              ? Object.fromEntries(
+                  fields.map((field) => [
+                    field.name,
+                    (editing[field.name] as string | number | null) ?? "",
+                  ])
+                )
+              : defaults
+          }
+          busy={mutation.isPending}
+          onClose={() => {
+            setDialogOpen(false);
+            setEditing(null);
+          }}
+          onSave={(values) => mutation.mutateAsync({ values, id: editing?.id })}
+        />
+      )}
     </>
   );
 }

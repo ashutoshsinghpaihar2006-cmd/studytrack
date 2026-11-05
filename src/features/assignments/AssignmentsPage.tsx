@@ -10,7 +10,7 @@ import { useAuth } from "../../app/providers";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function AssignmentsPage() {
-  const { client, user } = useAuth();
+  const { client, user, role } = useAuth();
   const queryClient = useQueryClient();
 
   const subjects = useTableRows("subjects");
@@ -248,6 +248,7 @@ export function AssignmentsPage() {
         emptyTitle="No assignments logged"
         emptyMessage="Add coursework deadlines manually or sync directly from Google Classroom."
         addLabel="Add assignment"
+        readOnly={role === "student"}
         defaults={{
           assigned_date: localISODate(),
           submission_deadline: localISODate(),

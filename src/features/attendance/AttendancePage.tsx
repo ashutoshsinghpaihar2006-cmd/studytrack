@@ -4,13 +4,14 @@ import { useAuth } from "../../app/providers";
 import { useTableRows, CrudPage } from "../../components/CrudPage";
 import { Button, MetricCard, Panel, StatusBadge } from "../../components/ui";
 import { formatDate, percent, localISODate } from "../../lib/format";
-import type { ColumnSpec, FieldSpec } from "../../lib/database.types";
+import { exportToCsv, type ColumnSpec, type FieldSpec } from "../../lib/database.types";
 import {
   AlertTriangle,
   CalendarCheck2,
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Download,
   Layers,
   Pencil,
   Plus,
@@ -31,7 +32,7 @@ import {
 import { TimetableModal } from "./TimetableModal";
 
 export function AttendancePage() {
-  const { client, user } = useAuth();
+  const { client, user, role } = useAuth();
   const queryClient = useQueryClient();
 
   const students = useTableRows("students");
@@ -283,7 +284,18 @@ export function AttendancePage() {
     { key: "status", label: "Status" },
   ];
 
-  return (
+    function handleExportCsv() {
+    const headers = ["Student", "Course", "Date", "Status"];
+    const rows = records.map((r) => [
+      studentMap.get(String(r.student_id)) ?? String(r.student_id),
+      subjectMap.get(String(r.subject_id)) ?? String(r.subject_id),
+      formatDate(String(r.attendance_date)),
+      String(r.status),
+    ]);
+    exportToCsv("StudyTrack_Attendance", headers, rows);
+  }
+
+return (
     <div className="space-y-6">
       {/* Header and View Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -519,6 +531,15 @@ export function AttendancePage() {
             emptyTitle="No attendance logged"
             emptyMessage="Select a student and course to record daily attendance."
             addLabel="Log attendance"
+            readOnly={role === "student"}
+            extraAction={
+              records.length > 0 ? (
+                <Button variant="secondary" onClick={handleExportCsv}>
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </Button>
+              ) : undefined
+            }
           />
         </>
       )}

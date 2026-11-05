@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import { AlertTriangle, CalendarDays, GraduationCap } from "lucide-react";
 import { CrudPage, useTableRows } from "../../components/CrudPage";
+import { useAuth } from "../../app/providers";
 import { MetricCard } from "../../components/ui";
 import { formatDate } from "../../lib/format";
 import type { ColumnSpec, FieldSpec } from "../../lib/database.types";
 
 export function ExaminationsPage() {
+  const { role } = useAuth();
   const subjects = useTableRows("subjects");
   const exams = useTableRows("exams");
   const marks = useTableRows("marks");
@@ -41,6 +43,7 @@ export function ExaminationsPage() {
       <MetricCard label="Examination records" value={rows.length} detail="Across your subjects" icon={<GraduationCap className="h-4 w-4" />} tone="blue" />
       <MetricCard label="Average recorded score" value={results.length ? `${average}%` : "—"} detail="Calculated from exam marks" icon={<AlertTriangle className="h-4 w-4" />} tone="green" />
     </div>
-    <CrudPage title="Examinations" eyebrow="Exam schedule" description="Plan internal, midterm, practical, and final examinations, then record results in Marks & Performance." table="exams" fields={fields} columns={columns} searchKeys={["name", "exam_type"]} emptyTitle="No examinations scheduled" emptyMessage="Add an exam date and maximum marks to make it available for result recording." addLabel="Add examination" />
+    <CrudPage title="Examinations" eyebrow="Exam schedule" description="Plan internal, midterm, practical, and final examinations, then record results in Marks & Performance." table="exams" fields={fields} columns={columns} searchKeys={["name", "exam_type"]} emptyTitle="No examinations scheduled" emptyMessage="Add an exam date and maximum marks to make it available for result recording." addLabel="Add examination"
+      readOnly={role === "student"} />
   </div>;
 }

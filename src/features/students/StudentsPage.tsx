@@ -69,6 +69,7 @@ const columns: ColumnSpec[] = [
 ];
 
 export function StudentsPage() {
+  const { role } = useAuth();
   return (
     <CrudPage
       title="Students"
@@ -81,6 +82,7 @@ export function StudentsPage() {
       emptyTitle="No student profiles yet"
       emptyMessage="Add a student profile to connect courses, class attendance, and examination marks."
       addLabel="Add student"
+      readOnly={role !== "admin"}
     />
   );
 }

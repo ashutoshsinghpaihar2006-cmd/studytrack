@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
+  BellRing,
   BookOpenCheck,
   CalendarDays,
+  CalendarRange,
   ClipboardCheck,
   ClipboardList,
   Command,
@@ -12,6 +14,7 @@ import {
   Keyboard,
   LayoutDashboard,
   ListChecks,
+  LogOut,
   Menu,
   NotebookTabs,
   PanelLeftClose,
@@ -19,8 +22,11 @@ import {
   Play,
   Search,
   Settings,
+  Shield,
+  ShieldAlert,
   ShieldCheck,
   Timer,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -29,28 +35,36 @@ import { cn } from "../components/ui";
 import { CommandPalette } from "../components/CommandPalette";
 import { FocusTimerModal } from "../components/FocusTimer";
 import { KeyboardShortcutsModal } from "../components/KeyboardShortcutsModal";
+import type { UserRole } from "../lib/database.types";
 
-const navigation = [
-  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Students", to: "/students", icon: Users },
-  { label: "Subjects", to: "/subjects", icon: NotebookTabs },
-  { label: "Topics", to: "/topics", icon: ListChecks },
-  { label: "Attendance", to: "/attendance", icon: ClipboardCheck },
-  { label: "Assignments", to: "/assignments", icon: ClipboardList },
-  { label: "Examinations", to: "/examinations", icon: GraduationCap },
-  { label: "Marks & Performance", to: "/marks", icon: Activity },
-  { label: "Study Planner", to: "/planner", icon: CalendarDays },
-  { label: "Settings", to: "/settings", icon: Settings },
+type NavItem = {
+  label: string;
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  roles: UserRole[];
+};
+
+const allNavigationItems: NavItem[] = [
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, roles: ["admin", "professor", "student"] },
+  { label: "User Management", to: "/admin/users", icon: ShieldCheck, roles: ["admin"] },
+  { label: "Students", to: "/students", icon: Users, roles: ["admin", "professor"] },
+  { label: "Subjects", to: "/subjects", icon: NotebookTabs, roles: ["admin", "professor", "student"] },
+  { label: "Class Timetable", to: "/timetable", icon: CalendarRange, roles: ["admin", "professor", "student"] },
+  { label: "Attendance", to: "/attendance", icon: ClipboardCheck, roles: ["admin", "professor", "student"] },
+  { label: "Assignments", to: "/assignments", icon: ClipboardList, roles: ["admin", "professor", "student"] },
+  { label: "Examinations", to: "/examinations", icon: GraduationCap, roles: ["admin", "professor", "student"] },
+  { label: "Marks & Performance", to: "/marks", icon: Activity, roles: ["admin", "professor", "student"] },
+  { label: "Study Planner", to: "/planner", icon: CalendarDays, roles: ["admin", "student"] },
+  { label: "Announcements", to: "/announcements", icon: BellRing, roles: ["admin", "professor", "student"] },
+  { label: "Audit Activity Log", to: "/activity-log", icon: ListChecks, roles: ["admin"] },
+  { label: "Settings", to: "/settings", icon: Settings, roles: ["admin", "professor", "student"] },
 ];
 
-const titles: Record<string, string> = Object.fromEntries(
-  navigation.map((item) => [item.to, item.label])
-);
-
 function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boolean }) {
-  const { user, signOut } = useAuth();
+  const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
-  const name = String(user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "Student");
+
+  const name = String(profile?.full_name ?? user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "User");
   const initials =
     name
       .split(/[\s._-]+/)
@@ -58,6 +72,16 @@ function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boole
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join("") || "ST";
+
+  const navigation = useMemo(() => {
+    return allNavigationItems.filter((item) => item.roles.includes(role));
+  }, [role]);
+
+  const roleStyles = {
+    admin: { label: "Administrator", bg: "bg-purple-100 text-purple-800 border-purple-200", icon: Shield },
+    professor: { label: "Professor", bg: "bg-amber-100 text-amber-800 border-amber-200", icon: GraduationCap },
+    student: { label: "Student", bg: "bg-indigo-100 text-indigo-800 border-indigo-200", icon: Users },
+  }[role];
 
   return (
     <aside className="flex h-full w-[260px] flex-col border-r border-slate-200/80 bg-white">
@@ -87,11 +111,19 @@ function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boole
         )}
       </div>
 
-      {/* Nav Section */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="eyebrow px-2">Workspace Modules</div>
+      {/* Role Badge Section */}
+      <div className="px-4 pt-3 pb-1">
+        <div className="flex items-center justify-between px-1">
+          <div className="eyebrow">Workspace</div>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleStyles.bg}`}>
+            <roleStyles.icon className="h-2.5 w-2.5" />
+            {roleStyles.label}
+          </span>
+        </div>
       </div>
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+
+      {/* Nav Section */}
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
         {navigation.map(({ label, to, icon: Icon }) => (
           <NavLink
             key={to}
@@ -99,9 +131,9 @@ function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boole
             onClick={onNavigate}
             className={({ isActive }) =>
               cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-[background-color,color,box-shadow] duration-150 ease-out active:scale-[0.99]",
+                "group flex items-center gap-3 rounded-xl px-3 py-2 text-xs font-semibold tracking-tight transition-colors",
                 isActive
-                  ? "bg-indigo-50/80 text-indigo-700 font-semibold ring-1 ring-inset ring-indigo-500/10 shadow-sm shadow-indigo-100/30"
+                  ? "bg-indigo-50 text-indigo-700 shadow-sm"
                   : "text-slate-600 hover:bg-slate-50 hover:text-ink"
               )
             }
@@ -110,49 +142,39 @@ function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boole
               <>
                 <Icon
                   className={cn(
-                    "h-4 w-4 transition-colors duration-150",
-                    isActive
-                      ? "text-indigo-600"
-                      : "text-slate-400 group-hover:text-slate-600"
+                    "h-4 w-4 transition-colors",
+                    isActive ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
                   )}
                 />
-                <span className="truncate">{label}</span>
-                {isActive && (
-                  <span className="ml-auto h-1.5 w-1.5 rounded-full bg-indigo-600 shadow-sm" />
-                )}
+                <span className="flex-1">{label}</span>
               </>
             )}
           </NavLink>
         ))}
       </nav>
 
-      {/* User & Security Footer */}
+      {/* User Footer Profile */}
       <div className="border-t border-slate-100 p-3 bg-slate-50/50">
-        <div className="flex items-center gap-3 rounded-xl p-2 bg-white ring-1 ring-slate-900/5 shadow-subtle">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 font-mono text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-500/10">
-            {initials}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-semibold text-ink">{name}</div>
-            <div className="truncate font-mono text-[10px] text-slate-400">
-              {user?.email}
+        <div className="flex items-center justify-between gap-2 rounded-xl p-2 bg-white border border-slate-100 shadow-sm">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-600 text-xs font-bold text-white shadow-xs">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-semibold text-ink">{name}</div>
+              <div className="truncate text-[10px] text-slate-400">{user?.email}</div>
             </div>
           </div>
           <button
             title="Sign out"
-            aria-label="Sign out"
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:scale-95 transition-all"
             onClick={async () => {
               await signOut();
               navigate("/login");
             }}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600 transition-colors"
           >
-            <PanelLeftClose className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
           </button>
-        </div>
-        <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-medium text-slate-500">
-          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-          <span>PostgreSQL RLS Protected</span>
         </div>
       </div>
     </aside>
@@ -161,17 +183,9 @@ function Sidebar({ onNavigate, close }: { onNavigate?: () => void; close?: boole
 
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [focusTimerOpen, setFocusTimerOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const title = pathname.startsWith("/students/")
-    ? "Student profile"
-    : titles[pathname] ?? "StudyTrack";
-
-  // Focus Timer persistent state
   const [timerState, setTimerState] = useState<{
     isRunning: boolean;
     timeLeft: number;
@@ -187,235 +201,113 @@ export function AppShell() {
     subjectId: "",
     notes: "",
   });
+  const location = useLocation();
+  const { role } = useAuth();
 
-  // Ticking effect for Pomodoro
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (timerState.isRunning && timerState.timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimerState((prev) => {
-          if (prev.timeLeft <= 1) {
-            return { ...prev, timeLeft: 0, isRunning: false };
-          }
-          return { ...prev, timeLeft: prev.timeLeft - 1 };
-        });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [timerState.isRunning, timerState.timeLeft]);
+  const titles: Record<string, string> = {
+    "/dashboard": "Dashboard",
+    "/admin/users": "User Management",
+    "/students": "Students",
+    "/subjects": "Subjects",
+    "/timetable": "Class Timetable",
+    "/attendance": "Attendance",
+    "/assignments": "Assignments",
+    "/examinations": "Examinations",
+    "/marks": "Marks & Performance",
+    "/planner": "Study Planner",
+    "/announcements": "Announcements",
+    "/activity-log": "Audit Activity Log",
+    "/settings": "Settings",
+  };
 
-  // Global Keyboard Shortcuts Listener
-  useEffect(() => {
-    let lastKey = "";
-    let lastTime = 0;
-
-    function handleKeyDown(e: KeyboardEvent) {
-      // Don't intercept when user is typing in form controls
-      const activeEl = document.activeElement;
-      const isInput =
-        activeEl instanceof HTMLInputElement ||
-        activeEl instanceof HTMLTextAreaElement ||
-        activeEl instanceof HTMLSelectElement;
-
-      // Ctrl+K or Cmd+K
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setCommandPaletteOpen((prev) => !prev);
-        return;
-      }
-
-      if (isInput) return;
-
-      // '?' hotkey for shortcuts modal
-      if (e.key === "?") {
-        e.preventDefault();
-        setShortcutsOpen((prev) => !prev);
-        return;
-      }
-
-      // 't' for focus timer
-      if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setFocusTimerOpen((prev) => !prev);
-        return;
-      }
-
-      // '/' to open search command palette
-      if (e.key === "/") {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-        return;
-      }
-
-      // Sequential shortcuts: G then D (dashboard), G then A (attendance), etc.
-      const now = Date.now();
-      const currentKey = e.key.toLowerCase();
-
-      if (lastKey === "g" && now - lastTime < 1000) {
-        if (currentKey === "d") {
-          e.preventDefault();
-          navigate("/dashboard");
-        } else if (currentKey === "a") {
-          e.preventDefault();
-          navigate("/attendance");
-        } else if (currentKey === "h") {
-          e.preventDefault();
-          navigate("/assignments");
-        } else if (currentKey === "p") {
-          e.preventDefault();
-          navigate("/planner");
-        } else if (currentKey === "m") {
-          e.preventDefault();
-          navigate("/marks");
-        } else if (currentKey === "s") {
-          e.preventDefault();
-          navigate("/students");
-        } else if (currentKey === "c") {
-          e.preventDefault();
-          navigate("/subjects");
-        } else if (currentKey === "t") {
-          e.preventDefault();
-          navigate("/topics");
-        }
-        lastKey = "";
-        return;
-      }
-
-      lastKey = currentKey;
-      lastTime = now;
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
-
-  const timerMins = Math.floor(timerState.timeLeft / 60);
-  const timerSecs = timerState.timeLeft % 60;
-  const timerDisplay = `${String(timerMins).padStart(2, "0")}:${String(timerSecs).padStart(2, "0")}`;
+  const currentTitle = titles[location.pathname] ?? "Academic Workspace";
 
   return (
-    <div className="min-h-screen bg-paper">
-      <div className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:block">
+    <div className="flex h-screen overflow-hidden bg-paper text-ink antialiased">
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:block lg:shrink-0">
         <Sidebar />
       </div>
 
+      {/* Mobile Drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            aria-label="Close navigation overlay"
-            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
+          <div
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileOpen(false)}
           />
-          <div className="absolute inset-y-0 left-0">
+          <div className="fixed inset-y-0 left-0 z-50 flex shadow-modal">
             <Sidebar close onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}
 
-      <div className="min-h-screen lg:pl-[260px]">
-        {/* Interactive Sticky Header */}
-        <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-slate-200/80 bg-white/85 px-4 backdrop-blur-md md:px-8">
+      {/* Main Content Area */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top Header Bar */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white px-4 md:px-8">
           <div className="flex items-center gap-3">
             <button
-              aria-label="Open navigation"
-              className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 active:scale-95 lg:hidden"
               onClick={() => setMobileOpen(true)}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+              aria-label="Open navigation"
             >
-              <Menu className="h-4 w-4" />
+              <Menu className="h-5 w-5" />
             </button>
-            <div>
-              <div className="text-sm font-bold tracking-tight text-ink">{title}</div>
-              <div className="text-[11px] font-medium text-slate-400">
-                {new Intl.DateTimeFormat("en", {
-                  weekday: "long",
-                  month: "short",
-                  day: "numeric",
-                }).format(new Date())}
-              </div>
-            </div>
+            <h1 className="text-lg font-bold tracking-tight text-ink md:text-xl">
+              {currentTitle}
+            </h1>
           </div>
 
-          {/* Interactive Middle Actions (Search / Timer / Hotkeys) */}
-          <div className="flex items-center gap-2.5">
-            {/* Quick Command Palette Button */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/80 px-3 py-1.5 text-xs text-slate-500 hover:border-indigo-300 hover:bg-white hover:text-slate-800 shadow-subtle active:scale-98 transition-all"
+              onClick={() => setPaletteOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-ink transition-colors"
             >
-              <Search className="h-3.5 w-3.5 text-slate-400" />
-              <span className="hidden sm:inline">Search or jump to…</span>
-              <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200">
-                ⌘K
+              <Search className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Search...</span>
+              <kbd className="hidden rounded bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 shadow-xs sm:inline">
+                Ctrl+K
               </kbd>
             </button>
 
-            {/* Interactive Focus Study Timer Pill */}
-            <button
-              onClick={() => setFocusTimerOpen(true)}
-              className={`flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold shadow-subtle transition-all active:scale-98 ${
-                timerState.isRunning
-                  ? "bg-indigo-600 text-white shadow-button ring-1 ring-indigo-500"
-                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <Flame
-                className={`h-3.5 w-3.5 ${
-                  timerState.isRunning ? "text-amber-300 animate-bounce" : "text-indigo-600"
-                }`}
-              />
-              <span className="font-mono tabular-nums">{timerDisplay}</span>
-            </button>
+            {role === "student" && (
+              <button
+                onClick={() => setTimerOpen(true)}
+                title="Focus Study Timer"
+                className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+              >
+                <Timer className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Focus Timer</span>
+              </button>
+            )}
 
-            {/* Keyboard Shortcuts Trigger */}
             <button
               onClick={() => setShortcutsOpen(true)}
-              title="Keyboard Shortcuts (?)"
-              aria-label="Keyboard Shortcuts"
-              className="hidden sm:grid h-8 w-8 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-ink shadow-subtle active:scale-95 transition-all"
+              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="Keyboard shortcuts"
             >
               <Keyboard className="h-4 w-4" />
             </button>
-
-            {/* PostgreSQL Live Indicator */}
-            <div className="hidden lg:flex items-center gap-2 rounded-full bg-slate-100/80 px-3 py-1 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-900/5">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              </span>
-              <span>PostgreSQL Active</span>
-            </div>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1500px] px-4 py-6 md:px-8 md:py-8">
-          <Outlet />
+        {/* Scrollable Page Body */}
+        <main className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-8">
+          <div className="mx-auto max-w-7xl">
+            <Outlet />
+          </div>
         </main>
-
-        <footer className="mx-4 border-t border-slate-200/60 py-5 text-center text-[11px] text-slate-400 md:mx-8">
-          StudyTrack <span className="px-1.5">·</span> Connected to Supabase PostgreSQL workspace
-        </footer>
       </div>
 
-      {/* Global Interactive Modals */}
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        onOpenFocusTimer={() => setFocusTimerOpen(true)}
-      />
-
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <FocusTimerModal
-        open={focusTimerOpen}
-        onClose={() => setFocusTimerOpen(false)}
+        open={timerOpen}
+        onClose={() => setTimerOpen(false)}
         timerState={timerState}
         onUpdateState={setTimerState}
       />
-
-      <KeyboardShortcutsModal
-        open={shortcutsOpen}
-        onClose={() => setShortcutsOpen(false)}
-      />
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }
