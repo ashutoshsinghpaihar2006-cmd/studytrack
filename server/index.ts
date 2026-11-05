@@ -2,6 +2,10 @@ import express from "express";
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 
+try {
+  process.loadEnvFile();
+} catch {}
+
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const isProduction = process.env.NODE_ENV === "production";
@@ -11,7 +15,7 @@ const httpServer = createHttpServer(app);
 app.get("/api/public-config", (_request, response) => {
   response.setHeader("Cache-Control", "no-store");
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? process.env.SUPABASE_PUBLISHABLE_KEY;
   response.json({
     configured: Boolean(supabaseUrl && supabaseAnonKey),
     supabaseUrl: supabaseUrl ?? null,
